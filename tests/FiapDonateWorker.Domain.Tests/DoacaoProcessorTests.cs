@@ -1,6 +1,6 @@
-using FiapDonateReceiver.Domain;
+using FiapDonateWorker.Domain;
 
-namespace FiapDonateReceiver.Domain.Tests;
+namespace FiapDonateWorker.Domain.Tests;
 
 public class DoacaoProcessorTests
 {

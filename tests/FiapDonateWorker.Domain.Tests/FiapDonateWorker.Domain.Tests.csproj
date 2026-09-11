@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\FiapDonateReceiver.Domain\FiapDonateReceiver.Domain.csproj" />
+    <ProjectReference Include="..\..\src\FiapDonateWorker.Domain\FiapDonateWorker.Domain.csproj" />
   </ItemGroup>
 
 </Project>

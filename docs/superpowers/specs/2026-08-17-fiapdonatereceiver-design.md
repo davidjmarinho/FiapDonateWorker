@@ -1,4 +1,4 @@
-# FiapDonateReceiver — Design
+# FiapDonateWorker — Design
 
 ## Contexto
 
@@ -79,14 +79,14 @@ tabela `Doacoes`.
 ## Estrutura do projeto
 
 ```
-FiapDonateReceiver/
-├── FiapDonateReceiver.slnx
+FiapDonateWorker/
+├── FiapDonateWorker.slnx
 ├── src/
-│   ├── FiapDonateReceiver.Worker/          # host ASP.NET Core + MassTransit consumer + endpoints /health /metrics
-│   ├── FiapDonateReceiver.Domain/          # entidades Campanha (parcial) e Doacao, regras de negócio
-│   └── FiapDonateReceiver.Infrastructure/  # DbContext (EF Core + Npgsql), migrations, persistência
+│   ├── FiapDonateWorker.Worker/          # host ASP.NET Core + MassTransit consumer + endpoints /health /metrics
+│   ├── FiapDonateWorker.Domain/          # entidades Campanha (parcial) e Doacao, regras de negócio
+│   └── FiapDonateWorker.Infrastructure/  # DbContext (EF Core + Npgsql), migrations, persistência
 ├── tests/
-│   └── FiapDonateReceiver.Domain.Tests/    # xUnit — regras de negócio isoladas
+│   └── FiapDonateWorker.Domain.Tests/    # xUnit — regras de negócio isoladas
 ├── Dockerfile
 ├── docker-compose.yml                      # Postgres + RabbitMQ para desenvolvimento local
 ├── k8s/

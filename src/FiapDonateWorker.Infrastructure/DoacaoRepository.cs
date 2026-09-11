@@ -1,13 +1,13 @@
-using FiapDonateReceiver.Domain;
+using FiapDonateWorker.Domain;
 using Microsoft.EntityFrameworkCore;
 
-namespace FiapDonateReceiver.Infrastructure;
+namespace FiapDonateWorker.Infrastructure;
 
 public class DoacaoRepository
 {
-    private readonly ReceiverDbContext _dbContext;
+    private readonly WorkerDbContext _dbContext;
 
-    public DoacaoRepository(ReceiverDbContext dbContext)
+    public DoacaoRepository(WorkerDbContext dbContext)
     {
         _dbContext = dbContext;
     }

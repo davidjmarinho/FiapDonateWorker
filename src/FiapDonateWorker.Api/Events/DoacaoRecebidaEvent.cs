@@ -1,4 +1,4 @@
-namespace FiapDonateReceiver.Worker.Events;
+namespace FiapDonateWorker.Api.Events;
 
 public record DoacaoRecebidaEvent(
     Guid DoacaoId,

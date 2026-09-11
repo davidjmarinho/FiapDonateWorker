@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace FiapDonateReceiver.Infrastructure.Migrations
+namespace FiapDonateWorker.Infrastructure.Migrations
 {
     /// <inheritdoc />
     public partial class InitialCreate : Migration

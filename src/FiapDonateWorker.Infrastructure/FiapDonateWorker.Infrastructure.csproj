@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\FiapDonateReceiver.Domain\FiapDonateReceiver.Domain.csproj" />
+    <ProjectReference Include="..\FiapDonateWorker.Domain\FiapDonateWorker.Domain.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,14 +1,14 @@
-# FiapDonateReceiver Implementation Plan
+# FiapDonateWorker Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the FiapDonateReceiver Worker — the donation-processing microservice for the "Conexão Solidária" hackathon platform — that consumes `DoacaoRecebidaEvent` messages from RabbitMQ and updates the donated campaign's total, idempotently.
+**Goal:** Build the FiapDonateWorker Worker — the donation-processing microservice for the "Conexão Solidária" hackathon platform — that consumes `DoacaoRecebidaEvent` messages from RabbitMQ and updates the donated campaign's total, idempotently.
 
-**Architecture:** A single ASP.NET Core Minimal API host (`FiapDonateReceiver.Worker`) runs a MassTransit/RabbitMQ consumer in the background and exposes `/health` and `/metrics` over HTTP. Business rules live in a dependency-free `FiapDonateReceiver.Domain` project; PostgreSQL persistence lives in `FiapDonateReceiver.Infrastructure`, which maps the shared `Campanhas` table (owned by the separate API repository) and owns a new `Doacoes` table.
+**Architecture:** A single ASP.NET Core Minimal API host (`FiapDonateWorker.Worker`) runs a MassTransit/RabbitMQ consumer in the background and exposes `/health` and `/metrics` over HTTP. Business rules live in a dependency-free `FiapDonateWorker.Domain` project; PostgreSQL persistence lives in `FiapDonateWorker.Infrastructure`, which maps the shared `Campanhas` table (owned by the separate API repository) and owns a new `Doacoes` table.
 
 **Tech Stack:** .NET 8 (LTS), MassTransit 8.5.10 + RabbitMQ.Client 7.2.1, EF Core 8 + Npgsql, PostgreSQL, RabbitMQ, prometheus-net, xUnit, Docker, Kubernetes, GitHub Actions.
 
-> **Post-implementation correction (Task 10):** this plan originally specified MassTransit **9.2.0**, verified only by `dotnet build` in a throwaway probe. Task 10's end-to-end run discovered that MassTransit 9.x is a commercial product that refuses to start the bus at runtime without a paid license (`MassTransit.ConfigurationException: License must be specified...`) — a failure a compile-only check cannot catch. The implementation was corrected to **MassTransit 8.5.10** (the last open-source release); no source code changes were needed, only the two `PackageReference` versions in `FiapDonateReceiver.Worker.csproj`. All `9.2.0` references below are historical — use `8.5.10`.
+> **Post-implementation correction (Task 10):** this plan originally specified MassTransit **9.2.0**, verified only by `dotnet build` in a throwaway probe. Task 10's end-to-end run discovered that MassTransit 9.x is a commercial product that refuses to start the bus at runtime without a paid license (`MassTransit.ConfigurationException: License must be specified...`) — a failure a compile-only check cannot catch. The implementation was corrected to **MassTransit 8.5.10** (the last open-source release); no source code changes were needed, only the two `PackageReference` versions in `FiapDonateWorker.Worker.csproj`. All `9.2.0` references below are historical — use `8.5.10`.
 
 ## Global Constraints
 
@@ -28,68 +28,68 @@
 ### Task 1: Solution and project scaffolding
 
 **Files:**
-- Create: `FiapDonateReceiver.slnx`
-- Create: `src/FiapDonateReceiver.Domain/FiapDonateReceiver.Domain.csproj`
-- Create: `src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj`
-- Create: `src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj`
-- Create: `tests/FiapDonateReceiver.Domain.Tests/FiapDonateReceiver.Domain.Tests.csproj`
-- Create: `tests/FiapDonateReceiver.Infrastructure.Tests/FiapDonateReceiver.Infrastructure.Tests.csproj`
-- Delete: `src/FiapDonateReceiver.Domain/Class1.cs`, `src/FiapDonateReceiver.Infrastructure/Class1.cs`, `tests/FiapDonateReceiver.Domain.Tests/UnitTest1.cs`, `tests/FiapDonateReceiver.Infrastructure.Tests/UnitTest1.cs` (template placeholders)
+- Create: `FiapDonateWorker.slnx`
+- Create: `src/FiapDonateWorker.Domain/FiapDonateWorker.Domain.csproj`
+- Create: `src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj`
+- Create: `src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj`
+- Create: `tests/FiapDonateWorker.Domain.Tests/FiapDonateWorker.Domain.Tests.csproj`
+- Create: `tests/FiapDonateWorker.Infrastructure.Tests/FiapDonateWorker.Infrastructure.Tests.csproj`
+- Delete: `src/FiapDonateWorker.Domain/Class1.cs`, `src/FiapDonateWorker.Infrastructure/Class1.cs`, `tests/FiapDonateWorker.Domain.Tests/UnitTest1.cs`, `tests/FiapDonateWorker.Infrastructure.Tests/UnitTest1.cs` (template placeholders)
 
 **Interfaces:**
-- Produces: solution file `FiapDonateReceiver.slnx` referencing all 5 projects; project-reference graph: `Infrastructure` → `Domain`; `Worker` → `Domain`, `Infrastructure`; `Domain.Tests` → `Domain`; `Infrastructure.Tests` → `Infrastructure`.
+- Produces: solution file `FiapDonateWorker.slnx` referencing all 5 projects; project-reference graph: `Infrastructure` → `Domain`; `Worker` → `Domain`, `Infrastructure`; `Domain.Tests` → `Domain`; `Infrastructure.Tests` → `Infrastructure`.
 
-All commands below run from the repository root (`FiapDonateReceiver/`, the directory containing `.git`).
+All commands below run from the repository root (`FiapDonateWorker/`, the directory containing `.git`).
 
 - [ ] **Step 1: Create the solution file**
 
-Run: `dotnet new sln -n FiapDonateReceiver`
-Expected: creates `FiapDonateReceiver.slnx` in the repo root (the `dotnet new sln` default format is `.slnx`).
+Run: `dotnet new sln -n FiapDonateWorker`
+Expected: creates `FiapDonateWorker.slnx` in the repo root (the `dotnet new sln` default format is `.slnx`).
 
 - [ ] **Step 2: Scaffold the five projects**
 
 ```bash
-dotnet new classlib -n FiapDonateReceiver.Domain -o src/FiapDonateReceiver.Domain -f net8.0
-dotnet new classlib -n FiapDonateReceiver.Infrastructure -o src/FiapDonateReceiver.Infrastructure -f net8.0
-dotnet new web -n FiapDonateReceiver.Worker -o src/FiapDonateReceiver.Worker -f net8.0
-dotnet new xunit -n FiapDonateReceiver.Domain.Tests -o tests/FiapDonateReceiver.Domain.Tests -f net8.0
-dotnet new xunit -n FiapDonateReceiver.Infrastructure.Tests -o tests/FiapDonateReceiver.Infrastructure.Tests -f net8.0
+dotnet new classlib -n FiapDonateWorker.Domain -o src/FiapDonateWorker.Domain -f net8.0
+dotnet new classlib -n FiapDonateWorker.Infrastructure -o src/FiapDonateWorker.Infrastructure -f net8.0
+dotnet new web -n FiapDonateWorker.Worker -o src/FiapDonateWorker.Worker -f net8.0
+dotnet new xunit -n FiapDonateWorker.Domain.Tests -o tests/FiapDonateWorker.Domain.Tests -f net8.0
+dotnet new xunit -n FiapDonateWorker.Infrastructure.Tests -o tests/FiapDonateWorker.Infrastructure.Tests -f net8.0
 ```
 
 - [ ] **Step 3: Remove template placeholder files**
 
 ```bash
-rm src/FiapDonateReceiver.Domain/Class1.cs
-rm src/FiapDonateReceiver.Infrastructure/Class1.cs
-rm tests/FiapDonateReceiver.Domain.Tests/UnitTest1.cs
-rm tests/FiapDonateReceiver.Infrastructure.Tests/UnitTest1.cs
+rm src/FiapDonateWorker.Domain/Class1.cs
+rm src/FiapDonateWorker.Infrastructure/Class1.cs
+rm tests/FiapDonateWorker.Domain.Tests/UnitTest1.cs
+rm tests/FiapDonateWorker.Infrastructure.Tests/UnitTest1.cs
 ```
 
 - [ ] **Step 4: Add all projects to the solution**
 
 ```bash
-dotnet sln FiapDonateReceiver.slnx add src/FiapDonateReceiver.Domain/FiapDonateReceiver.Domain.csproj src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj tests/FiapDonateReceiver.Domain.Tests/FiapDonateReceiver.Domain.Tests.csproj tests/FiapDonateReceiver.Infrastructure.Tests/FiapDonateReceiver.Infrastructure.Tests.csproj
+dotnet sln FiapDonateWorker.slnx add src/FiapDonateWorker.Domain/FiapDonateWorker.Domain.csproj src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj tests/FiapDonateWorker.Domain.Tests/FiapDonateWorker.Domain.Tests.csproj tests/FiapDonateWorker.Infrastructure.Tests/FiapDonateWorker.Infrastructure.Tests.csproj
 ```
 
 - [ ] **Step 5: Wire project references**
 
 ```bash
-dotnet add src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj reference src/FiapDonateReceiver.Domain/FiapDonateReceiver.Domain.csproj
-dotnet add src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj reference src/FiapDonateReceiver.Domain/FiapDonateReceiver.Domain.csproj
-dotnet add src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj reference src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj
-dotnet add tests/FiapDonateReceiver.Domain.Tests/FiapDonateReceiver.Domain.Tests.csproj reference src/FiapDonateReceiver.Domain/FiapDonateReceiver.Domain.csproj
-dotnet add tests/FiapDonateReceiver.Infrastructure.Tests/FiapDonateReceiver.Infrastructure.Tests.csproj reference src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj
+dotnet add src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj reference src/FiapDonateWorker.Domain/FiapDonateWorker.Domain.csproj
+dotnet add src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj reference src/FiapDonateWorker.Domain/FiapDonateWorker.Domain.csproj
+dotnet add src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj reference src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj
+dotnet add tests/FiapDonateWorker.Domain.Tests/FiapDonateWorker.Domain.Tests.csproj reference src/FiapDonateWorker.Domain/FiapDonateWorker.Domain.csproj
+dotnet add tests/FiapDonateWorker.Infrastructure.Tests/FiapDonateWorker.Infrastructure.Tests.csproj reference src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj
 ```
 
 - [ ] **Step 6: Verify the solution builds**
 
-Run: `dotnet build FiapDonateReceiver.slnx`
+Run: `dotnet build FiapDonateWorker.slnx`
 Expected: `Compilação com êxito.` (Build succeeded), `0 Erro(s)`.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add FiapDonateReceiver.slnx src tests
+git add FiapDonateWorker.slnx src tests
 git commit -m "chore: scaffold solution and project structure"
 ```
 
@@ -98,22 +98,22 @@ git commit -m "chore: scaffold solution and project structure"
 ### Task 2: Domain — entities and donation-processing rule (TDD)
 
 **Files:**
-- Create: `src/FiapDonateReceiver.Domain/CampanhaStatus.cs`
-- Create: `src/FiapDonateReceiver.Domain/Campanha.cs`
-- Create: `src/FiapDonateReceiver.Domain/DoacaoStatus.cs`
-- Create: `src/FiapDonateReceiver.Domain/Doacao.cs`
-- Create: `src/FiapDonateReceiver.Domain/DoacaoProcessor.cs`
-- Test: `tests/FiapDonateReceiver.Domain.Tests/DoacaoProcessorTests.cs`
+- Create: `src/FiapDonateWorker.Domain/CampanhaStatus.cs`
+- Create: `src/FiapDonateWorker.Domain/Campanha.cs`
+- Create: `src/FiapDonateWorker.Domain/DoacaoStatus.cs`
+- Create: `src/FiapDonateWorker.Domain/Doacao.cs`
+- Create: `src/FiapDonateWorker.Domain/DoacaoProcessor.cs`
+- Test: `tests/FiapDonateWorker.Domain.Tests/DoacaoProcessorTests.cs`
 
 **Interfaces:**
 - Produces: `Campanha { Guid Id; CampanhaStatus Status; decimal ValorArrecadado; }`, `Doacao { Guid Id; Guid IdCampanha; decimal ValorDoacao; DateTimeOffset DataHoraRecebida; DateTimeOffset DataHoraProcessada; DoacaoStatus Status; }`, `DoacaoProcessor.Processar(Campanha? campanha, Doacao doacao): void` — mutates `doacao.Status` and, when credited, increments `campanha.ValorArrecadado`. Used by Task 3's `DoacaoRepository`.
 
 - [ ] **Step 1: Create the entity and enum types**
 
-`src/FiapDonateReceiver.Domain/CampanhaStatus.cs`:
+`src/FiapDonateWorker.Domain/CampanhaStatus.cs`:
 
 ```csharp
-namespace FiapDonateReceiver.Domain;
+namespace FiapDonateWorker.Domain;
 
 public enum CampanhaStatus
 {
@@ -123,10 +123,10 @@ public enum CampanhaStatus
 }
 ```
 
-`src/FiapDonateReceiver.Domain/Campanha.cs`:
+`src/FiapDonateWorker.Domain/Campanha.cs`:
 
 ```csharp
-namespace FiapDonateReceiver.Domain;
+namespace FiapDonateWorker.Domain;
 
 public class Campanha
 {
@@ -136,10 +136,10 @@ public class Campanha
 }
 ```
 
-`src/FiapDonateReceiver.Domain/DoacaoStatus.cs`:
+`src/FiapDonateWorker.Domain/DoacaoStatus.cs`:
 
 ```csharp
-namespace FiapDonateReceiver.Domain;
+namespace FiapDonateWorker.Domain;
 
 public enum DoacaoStatus
 {
@@ -148,10 +148,10 @@ public enum DoacaoStatus
 }
 ```
 
-`src/FiapDonateReceiver.Domain/Doacao.cs`:
+`src/FiapDonateWorker.Domain/Doacao.cs`:
 
 ```csharp
-namespace FiapDonateReceiver.Domain;
+namespace FiapDonateWorker.Domain;
 
 public class Doacao
 {
@@ -166,12 +166,12 @@ public class Doacao
 
 - [ ] **Step 2: Write the failing tests for `DoacaoProcessor`**
 
-`tests/FiapDonateReceiver.Domain.Tests/DoacaoProcessorTests.cs`:
+`tests/FiapDonateWorker.Domain.Tests/DoacaoProcessorTests.cs`:
 
 ```csharp
-using FiapDonateReceiver.Domain;
+using FiapDonateWorker.Domain;
 
-namespace FiapDonateReceiver.Domain.Tests;
+namespace FiapDonateWorker.Domain.Tests;
 
 public class DoacaoProcessorTests
 {
@@ -240,15 +240,15 @@ public class DoacaoProcessorTests
 
 - [ ] **Step 3: Run the tests to verify they fail**
 
-Run: `dotnet test tests/FiapDonateReceiver.Domain.Tests/FiapDonateReceiver.Domain.Tests.csproj`
+Run: `dotnet test tests/FiapDonateWorker.Domain.Tests/FiapDonateWorker.Domain.Tests.csproj`
 Expected: build FAILS with `CS0103: The name 'DoacaoProcessor' does not exist in the current context` (the type doesn't exist yet).
 
 - [ ] **Step 4: Implement `DoacaoProcessor`**
 
-`src/FiapDonateReceiver.Domain/DoacaoProcessor.cs`:
+`src/FiapDonateWorker.Domain/DoacaoProcessor.cs`:
 
 ```csharp
-namespace FiapDonateReceiver.Domain;
+namespace FiapDonateWorker.Domain;
 
 public static class DoacaoProcessor
 {
@@ -278,13 +278,13 @@ public static class DoacaoProcessor
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `dotnet test tests/FiapDonateReceiver.Domain.Tests/FiapDonateReceiver.Domain.Tests.csproj`
+Run: `dotnet test tests/FiapDonateWorker.Domain.Tests/FiapDonateWorker.Domain.Tests.csproj`
 Expected: `Aprovado! - Com falha: 0, Aprovado: 4` (Passed! - Failed: 0, Passed: 4) — 4 tests: the two `[Theory]` cases count individually.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/FiapDonateReceiver.Domain tests/FiapDonateReceiver.Domain.Tests
+git add src/FiapDonateWorker.Domain tests/FiapDonateWorker.Domain.Tests
 git commit -m "feat: add domain entities and donation-processing rule"
 ```
 
@@ -293,39 +293,39 @@ git commit -m "feat: add domain entities and donation-processing rule"
 ### Task 3: Infrastructure — DbContext and idempotent repository (TDD via EF Core InMemory)
 
 **Files:**
-- Modify: `src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj`
-- Modify: `tests/FiapDonateReceiver.Infrastructure.Tests/FiapDonateReceiver.Infrastructure.Tests.csproj`
-- Create: `src/FiapDonateReceiver.Infrastructure/ReceiverDbContext.cs`
-- Create: `src/FiapDonateReceiver.Infrastructure/DoacaoRepository.cs`
-- Test: `tests/FiapDonateReceiver.Infrastructure.Tests/DoacaoRepositoryTests.cs`
+- Modify: `src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj`
+- Modify: `tests/FiapDonateWorker.Infrastructure.Tests/FiapDonateWorker.Infrastructure.Tests.csproj`
+- Create: `src/FiapDonateWorker.Infrastructure/WorkerDbContext.cs`
+- Create: `src/FiapDonateWorker.Infrastructure/DoacaoRepository.cs`
+- Test: `tests/FiapDonateWorker.Infrastructure.Tests/DoacaoRepositoryTests.cs`
 
 **Interfaces:**
-- Consumes: `FiapDonateReceiver.Domain.Campanha`, `Doacao`, `DoacaoProcessor.Processar` (Task 2).
-- Produces: `ReceiverDbContext(DbContextOptions<ReceiverDbContext>)` with `DbSet<Campanha> Campanhas`, `DbSet<Doacao> Doacoes`; `DoacaoRepository(ReceiverDbContext).ProcessarDoacaoAsync(Guid doacaoId, Guid idCampanha, decimal valorDoacao, DateTimeOffset dataHoraRecebida, CancellationToken = default): Task<bool>` — returns `false` when the `doacaoId` was already processed (no-op), `true` otherwise. Used by Task 5's consumer.
+- Consumes: `FiapDonateWorker.Domain.Campanha`, `Doacao`, `DoacaoProcessor.Processar` (Task 2).
+- Produces: `WorkerDbContext(DbContextOptions<WorkerDbContext>)` with `DbSet<Campanha> Campanhas`, `DbSet<Doacao> Doacoes`; `DoacaoRepository(WorkerDbContext).ProcessarDoacaoAsync(Guid doacaoId, Guid idCampanha, decimal valorDoacao, DateTimeOffset dataHoraRecebida, CancellationToken = default): Task<bool>` — returns `false` when the `doacaoId` was already processed (no-op), `true` otherwise. Used by Task 5's consumer.
 
 - [ ] **Step 1: Add EF Core packages**
 
 ```bash
-dotnet add src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj package Npgsql.EntityFrameworkCore.PostgreSQL --version 8.0.11
-dotnet add src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj package Microsoft.EntityFrameworkCore.Design --version 8.0.11
-dotnet add tests/FiapDonateReceiver.Infrastructure.Tests/FiapDonateReceiver.Infrastructure.Tests.csproj package Microsoft.EntityFrameworkCore.InMemory --version 8.0.11
+dotnet add src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj package Npgsql.EntityFrameworkCore.PostgreSQL --version 8.0.11
+dotnet add src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj package Microsoft.EntityFrameworkCore.Design --version 8.0.11
+dotnet add tests/FiapDonateWorker.Infrastructure.Tests/FiapDonateWorker.Infrastructure.Tests.csproj package Microsoft.EntityFrameworkCore.InMemory --version 8.0.11
 ```
 
 Note: `Npgsql.EntityFrameworkCore.PostgreSQL` versions ≥ 9 only target `net10.0` — the `--version 8.0.11` pin above is required for this to resolve against `net8.0`. Do not omit it.
 
-- [ ] **Step 2: Create `ReceiverDbContext`**
+- [ ] **Step 2: Create `WorkerDbContext`**
 
-`src/FiapDonateReceiver.Infrastructure/ReceiverDbContext.cs`:
+`src/FiapDonateWorker.Infrastructure/WorkerDbContext.cs`:
 
 ```csharp
-using FiapDonateReceiver.Domain;
+using FiapDonateWorker.Domain;
 using Microsoft.EntityFrameworkCore;
 
-namespace FiapDonateReceiver.Infrastructure;
+namespace FiapDonateWorker.Infrastructure;
 
-public class ReceiverDbContext : DbContext
+public class WorkerDbContext : DbContext
 {
-    public ReceiverDbContext(DbContextOptions<ReceiverDbContext> options) : base(options)
+    public WorkerDbContext(DbContextOptions<WorkerDbContext> options) : base(options)
     {
     }
 
@@ -355,22 +355,22 @@ public class ReceiverDbContext : DbContext
 
 - [ ] **Step 3: Write the failing tests for `DoacaoRepository`**
 
-`tests/FiapDonateReceiver.Infrastructure.Tests/DoacaoRepositoryTests.cs`:
+`tests/FiapDonateWorker.Infrastructure.Tests/DoacaoRepositoryTests.cs`:
 
 ```csharp
-using FiapDonateReceiver.Domain;
+using FiapDonateWorker.Domain;
 using Microsoft.EntityFrameworkCore;
 
-namespace FiapDonateReceiver.Infrastructure.Tests;
+namespace FiapDonateWorker.Infrastructure.Tests;
 
 public class DoacaoRepositoryTests
 {
-    private static ReceiverDbContext CriarContexto(string nomeBanco)
+    private static WorkerDbContext CriarContexto(string nomeBanco)
     {
-        var options = new DbContextOptionsBuilder<ReceiverDbContext>()
+        var options = new DbContextOptionsBuilder<WorkerDbContext>()
             .UseInMemoryDatabase(nomeBanco)
             .Options;
-        return new ReceiverDbContext(options);
+        return new WorkerDbContext(options);
     }
 
     [Fact]
@@ -457,24 +457,24 @@ public class DoacaoRepositoryTests
 
 - [ ] **Step 4: Run the tests to verify they fail**
 
-Run: `dotnet test tests/FiapDonateReceiver.Infrastructure.Tests/FiapDonateReceiver.Infrastructure.Tests.csproj`
+Run: `dotnet test tests/FiapDonateWorker.Infrastructure.Tests/FiapDonateWorker.Infrastructure.Tests.csproj`
 Expected: build FAILS with `CS0246: The type or namespace name 'DoacaoRepository' could not be found`.
 
 - [ ] **Step 5: Implement `DoacaoRepository`**
 
-`src/FiapDonateReceiver.Infrastructure/DoacaoRepository.cs`:
+`src/FiapDonateWorker.Infrastructure/DoacaoRepository.cs`:
 
 ```csharp
-using FiapDonateReceiver.Domain;
+using FiapDonateWorker.Domain;
 using Microsoft.EntityFrameworkCore;
 
-namespace FiapDonateReceiver.Infrastructure;
+namespace FiapDonateWorker.Infrastructure;
 
 public class DoacaoRepository
 {
-    private readonly ReceiverDbContext _dbContext;
+    private readonly WorkerDbContext _dbContext;
 
-    public DoacaoRepository(ReceiverDbContext dbContext)
+    public DoacaoRepository(WorkerDbContext dbContext)
     {
         _dbContext = dbContext;
     }
@@ -518,14 +518,14 @@ public class DoacaoRepository
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
-Run: `dotnet test tests/FiapDonateReceiver.Infrastructure.Tests/FiapDonateReceiver.Infrastructure.Tests.csproj`
+Run: `dotnet test tests/FiapDonateWorker.Infrastructure.Tests/FiapDonateWorker.Infrastructure.Tests.csproj`
 Expected: `Aprovado! - Com falha: 0, Aprovado: 3`.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/FiapDonateReceiver.Infrastructure tests/FiapDonateReceiver.Infrastructure.Tests
-git commit -m "feat: add ReceiverDbContext and idempotent DoacaoRepository"
+git add src/FiapDonateWorker.Infrastructure tests/FiapDonateWorker.Infrastructure.Tests
+git commit -m "feat: add WorkerDbContext and idempotent DoacaoRepository"
 ```
 
 ---
@@ -534,11 +534,11 @@ git commit -m "feat: add ReceiverDbContext and idempotent DoacaoRepository"
 
 **Files:**
 - Create: `.config/dotnet-tools.json`
-- Create: `src/FiapDonateReceiver.Infrastructure/ReceiverDbContextFactory.cs`
-- Create: `src/FiapDonateReceiver.Infrastructure/Migrations/*` (generated by the `dotnet ef` tool)
+- Create: `src/FiapDonateWorker.Infrastructure/WorkerDbContextFactory.cs`
+- Create: `src/FiapDonateWorker.Infrastructure/Migrations/*` (generated by the `dotnet ef` tool)
 
 **Interfaces:**
-- Consumes: `ReceiverDbContext` (Task 3).
+- Consumes: `WorkerDbContext` (Task 3).
 - Produces: a `Migrations/*_InitialCreate.cs` that creates only the `Doacoes` table (the `Campanhas` mapping is excluded from migrations, see Task 3 Step 2).
 
 - [ ] **Step 1: Add a local tool manifest and install `dotnet-ef`**
@@ -552,25 +552,25 @@ Expected: creates `.config/dotnet-tools.json` listing `dotnet-ef` at version `8.
 
 - [ ] **Step 2: Create the design-time factory**
 
-`src/FiapDonateReceiver.Infrastructure/ReceiverDbContextFactory.cs`:
+`src/FiapDonateWorker.Infrastructure/WorkerDbContextFactory.cs`:
 
 ```csharp
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace FiapDonateReceiver.Infrastructure;
+namespace FiapDonateWorker.Infrastructure;
 
-public class ReceiverDbContextFactory : IDesignTimeDbContextFactory<ReceiverDbContext>
+public class WorkerDbContextFactory : IDesignTimeDbContextFactory<WorkerDbContext>
 {
-    public ReceiverDbContext CreateDbContext(string[] args)
+    public WorkerDbContext CreateDbContext(string[] args)
     {
         var connectionString = Environment.GetEnvironmentVariable("RECEIVER_DB_CONNECTION")
             ?? "Host=localhost;Port=5432;Database=conexao_solidaria;Username=postgres;Password=postgres";
 
-        var optionsBuilder = new DbContextOptionsBuilder<ReceiverDbContext>();
+        var optionsBuilder = new DbContextOptionsBuilder<WorkerDbContext>();
         optionsBuilder.UseNpgsql(connectionString);
 
-        return new ReceiverDbContext(optionsBuilder.Options);
+        return new WorkerDbContext(optionsBuilder.Options);
     }
 }
 ```
@@ -580,20 +580,20 @@ This factory is only used by the `dotnet ef` CLI tool to build the model at desi
 - [ ] **Step 3: Generate the initial migration**
 
 ```bash
-dotnet ef migrations add InitialCreate --project src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj --startup-project src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj -o Migrations
+dotnet ef migrations add InitialCreate --project src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj --startup-project src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj -o Migrations
 ```
 
-Expected: creates `src/FiapDonateReceiver.Infrastructure/Migrations/<timestamp>_InitialCreate.cs`, `InitialCreate.Designer.cs`, and `ReceiverDbContextModelSnapshot.cs`. Open the generated `_InitialCreate.cs` and confirm the `Up()` method only calls `migrationBuilder.CreateTable(name: "Doacoes", ...)` — it must **not** create a `Campanhas` table (that would conflict with the API repository's own migrations against the same database).
+Expected: creates `src/FiapDonateWorker.Infrastructure/Migrations/<timestamp>_InitialCreate.cs`, `InitialCreate.Designer.cs`, and `WorkerDbContextModelSnapshot.cs`. Open the generated `_InitialCreate.cs` and confirm the `Up()` method only calls `migrationBuilder.CreateTable(name: "Doacoes", ...)` — it must **not** create a `Campanhas` table (that would conflict with the API repository's own migrations against the same database).
 
 - [ ] **Step 4: Verify the solution still builds**
 
-Run: `dotnet build FiapDonateReceiver.slnx`
+Run: `dotnet build FiapDonateWorker.slnx`
 Expected: `Compilação com êxito.`, `0 Erro(s)`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add .config src/FiapDonateReceiver.Infrastructure/ReceiverDbContextFactory.cs src/FiapDonateReceiver.Infrastructure/Migrations
+git add .config src/FiapDonateWorker.Infrastructure/WorkerDbContextFactory.cs src/FiapDonateWorker.Infrastructure/Migrations
 git commit -m "feat: add PostgreSQL migration for the Doacoes table"
 ```
 
@@ -602,30 +602,30 @@ git commit -m "feat: add PostgreSQL migration for the Doacoes table"
 ### Task 5: Worker — event contract, MassTransit consumer, and host wiring
 
 **Files:**
-- Modify: `src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj`
-- Create: `src/FiapDonateReceiver.Worker/Events/DoacaoRecebidaEvent.cs`
-- Create: `src/FiapDonateReceiver.Worker/Consumers/DoacaoRecebidaConsumer.cs`
-- Modify: `src/FiapDonateReceiver.Worker/Program.cs` (full replace)
-- Modify: `src/FiapDonateReceiver.Worker/appsettings.json` (full replace)
-- Modify: `src/FiapDonateReceiver.Worker/appsettings.Development.json` (full replace)
+- Modify: `src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj`
+- Create: `src/FiapDonateWorker.Worker/Events/DoacaoRecebidaEvent.cs`
+- Create: `src/FiapDonateWorker.Worker/Consumers/DoacaoRecebidaConsumer.cs`
+- Modify: `src/FiapDonateWorker.Worker/Program.cs` (full replace)
+- Modify: `src/FiapDonateWorker.Worker/appsettings.json` (full replace)
+- Modify: `src/FiapDonateWorker.Worker/appsettings.Development.json` (full replace)
 
 **Interfaces:**
-- Consumes: `FiapDonateReceiver.Infrastructure.ReceiverDbContext`, `DoacaoRepository.ProcessarDoacaoAsync(...)` (Task 3).
+- Consumes: `FiapDonateWorker.Infrastructure.WorkerDbContext`, `DoacaoRepository.ProcessarDoacaoAsync(...)` (Task 3).
 - Produces: `DoacaoRecebidaEvent(Guid DoacaoId, Guid IdCampanha, decimal ValorDoacao, DateTimeOffset DataHoraRecebida)` — the wire contract consumed from `doacao-recebida-queue`. This is the record Task 6 extends with metrics, and the payload the manual e2e test (Task 10 / README) publishes by hand.
 
 - [ ] **Step 1: Add MassTransit packages**
 
 ```bash
-dotnet add src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj package MassTransit --version 9.2.0
-dotnet add src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj package MassTransit.RabbitMQ --version 9.2.0
+dotnet add src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj package MassTransit --version 9.2.0
+dotnet add src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj package MassTransit.RabbitMQ --version 9.2.0
 ```
 
 - [ ] **Step 2: Define the event contract**
 
-`src/FiapDonateReceiver.Worker/Events/DoacaoRecebidaEvent.cs`:
+`src/FiapDonateWorker.Worker/Events/DoacaoRecebidaEvent.cs`:
 
 ```csharp
-namespace FiapDonateReceiver.Worker.Events;
+namespace FiapDonateWorker.Worker.Events;
 
 public record DoacaoRecebidaEvent(
     Guid DoacaoId,
@@ -636,14 +636,14 @@ public record DoacaoRecebidaEvent(
 
 - [ ] **Step 3: Implement the consumer**
 
-`src/FiapDonateReceiver.Worker/Consumers/DoacaoRecebidaConsumer.cs`:
+`src/FiapDonateWorker.Worker/Consumers/DoacaoRecebidaConsumer.cs`:
 
 ```csharp
-using FiapDonateReceiver.Infrastructure;
-using FiapDonateReceiver.Worker.Events;
+using FiapDonateWorker.Infrastructure;
+using FiapDonateWorker.Worker.Events;
 using MassTransit;
 
-namespace FiapDonateReceiver.Worker.Consumers;
+namespace FiapDonateWorker.Worker.Consumers;
 
 public class DoacaoRecebidaConsumer : IConsumer<DoacaoRecebidaEvent>
 {
@@ -679,7 +679,7 @@ public class DoacaoRecebidaConsumer : IConsumer<DoacaoRecebidaEvent>
 
 - [ ] **Step 4: Wire the host**
 
-`src/FiapDonateReceiver.Worker/appsettings.json` (full replace):
+`src/FiapDonateWorker.Worker/appsettings.json` (full replace):
 
 ```json
 {
@@ -702,7 +702,7 @@ public class DoacaoRecebidaConsumer : IConsumer<DoacaoRecebidaEvent>
 }
 ```
 
-`src/FiapDonateReceiver.Worker/appsettings.Development.json` (full replace):
+`src/FiapDonateWorker.Worker/appsettings.Development.json` (full replace):
 
 ```json
 {
@@ -715,11 +715,11 @@ public class DoacaoRecebidaConsumer : IConsumer<DoacaoRecebidaEvent>
 }
 ```
 
-`src/FiapDonateReceiver.Worker/Program.cs` (full replace):
+`src/FiapDonateWorker.Worker/Program.cs` (full replace):
 
 ```csharp
-using FiapDonateReceiver.Infrastructure;
-using FiapDonateReceiver.Worker.Consumers;
+using FiapDonateWorker.Infrastructure;
+using FiapDonateWorker.Worker.Consumers;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -733,7 +733,7 @@ var rabbitVirtualHost = builder.Configuration["RabbitMq:VirtualHost"] ?? "/";
 var rabbitUsername = builder.Configuration["RabbitMq:Username"] ?? "guest";
 var rabbitPassword = builder.Configuration["RabbitMq:Password"] ?? "guest";
 
-builder.Services.AddDbContext<ReceiverDbContext>(options =>
+builder.Services.AddDbContext<WorkerDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 builder.Services.AddScoped<DoacaoRepository>();
@@ -760,20 +760,20 @@ builder.Services.AddMassTransit(x =>
 
 var app = builder.Build();
 
-app.MapGet("/", () => Results.Ok(new { service = "FiapDonateReceiver.Worker", status = "running" }));
+app.MapGet("/", () => Results.Ok(new { service = "FiapDonateWorker.Worker", status = "running" }));
 
 app.Run();
 ```
 
 - [ ] **Step 5: Verify the solution builds**
 
-Run: `dotnet build FiapDonateReceiver.slnx`
+Run: `dotnet build FiapDonateWorker.slnx`
 Expected: `Compilação com êxito.`, `0 Erro(s)`. (This task has no new domain logic to unit test — the consumer's end-to-end behavior is verified manually against real RabbitMQ/PostgreSQL in Task 10.)
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/FiapDonateReceiver.Worker
+git add src/FiapDonateWorker.Worker
 git commit -m "feat: wire MassTransit consumer for DoacaoRecebidaEvent"
 ```
 
@@ -782,9 +782,9 @@ git commit -m "feat: wire MassTransit consumer for DoacaoRecebidaEvent"
 ### Task 6: Worker — health checks and Prometheus metrics
 
 **Files:**
-- Modify: `src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj`
-- Modify: `src/FiapDonateReceiver.Worker/Program.cs` (full replace)
-- Modify: `src/FiapDonateReceiver.Worker/Consumers/DoacaoRecebidaConsumer.cs` (full replace)
+- Modify: `src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj`
+- Modify: `src/FiapDonateWorker.Worker/Program.cs` (full replace)
+- Modify: `src/FiapDonateWorker.Worker/Consumers/DoacaoRecebidaConsumer.cs` (full replace)
 
 **Interfaces:**
 - Produces: `GET /health` (aggregate status of PostgreSQL + RabbitMQ connectivity), `GET /metrics` (Prometheus exposition format, including custom counter `receiver_doacoes_processadas_total{resultado="processada|duplicada"}`).
@@ -792,24 +792,24 @@ git commit -m "feat: wire MassTransit consumer for DoacaoRecebidaEvent"
 - [ ] **Step 1: Add health-check and metrics packages**
 
 ```bash
-dotnet add src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj package AspNetCore.HealthChecks.NpgSql --version 9.0.0
-dotnet add src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj package AspNetCore.HealthChecks.Rabbitmq --version 9.0.0
-dotnet add src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj package prometheus-net.AspNetCore --version 8.2.1
+dotnet add src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj package AspNetCore.HealthChecks.NpgSql --version 9.0.0
+dotnet add src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj package AspNetCore.HealthChecks.Rabbitmq --version 9.0.0
+dotnet add src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj package prometheus-net.AspNetCore --version 8.2.1
 ```
 
 Note: `AspNetCore.HealthChecks.Rabbitmq` 9.x requires an injected `IConnection` (RabbitMQ.Client 7's async API) rather than a connection string — this was verified against the installed package version. Do not use the older `AddRabbitMQ(connectionString: ...)` overload; it no longer exists in this version.
 
 - [ ] **Step 2: Add the processed-donations counter to the consumer**
 
-`src/FiapDonateReceiver.Worker/Consumers/DoacaoRecebidaConsumer.cs` (full replace):
+`src/FiapDonateWorker.Worker/Consumers/DoacaoRecebidaConsumer.cs` (full replace):
 
 ```csharp
-using FiapDonateReceiver.Infrastructure;
-using FiapDonateReceiver.Worker.Events;
+using FiapDonateWorker.Infrastructure;
+using FiapDonateWorker.Worker.Events;
 using MassTransit;
 using Prometheus;
 
-namespace FiapDonateReceiver.Worker.Consumers;
+namespace FiapDonateWorker.Worker.Consumers;
 
 public class DoacaoRecebidaConsumer : IConsumer<DoacaoRecebidaEvent>
 {
@@ -854,11 +854,11 @@ public class DoacaoRecebidaConsumer : IConsumer<DoacaoRecebidaEvent>
 
 - [ ] **Step 3: Register health checks and metrics middleware**
 
-`src/FiapDonateReceiver.Worker/Program.cs` (full replace):
+`src/FiapDonateWorker.Worker/Program.cs` (full replace):
 
 ```csharp
-using FiapDonateReceiver.Infrastructure;
-using FiapDonateReceiver.Worker.Consumers;
+using FiapDonateWorker.Infrastructure;
+using FiapDonateWorker.Worker.Consumers;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Prometheus;
@@ -875,7 +875,7 @@ var rabbitUsername = builder.Configuration["RabbitMq:Username"] ?? "guest";
 var rabbitPassword = builder.Configuration["RabbitMq:Password"] ?? "guest";
 var rabbitUri = $"amqp://{rabbitUsername}:{rabbitPassword}@{rabbitHost}{rabbitVirtualHost}";
 
-builder.Services.AddDbContext<ReceiverDbContext>(options =>
+builder.Services.AddDbContext<WorkerDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 builder.Services.AddScoped<DoacaoRepository>();
@@ -914,7 +914,7 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
-app.MapGet("/", () => Results.Ok(new { service = "FiapDonateReceiver.Worker", status = "running" }));
+app.MapGet("/", () => Results.Ok(new { service = "FiapDonateWorker.Worker", status = "running" }));
 app.MapHealthChecks("/health");
 app.UseHttpMetrics();
 app.MapMetrics();
@@ -924,13 +924,13 @@ app.Run();
 
 - [ ] **Step 4: Verify the solution builds**
 
-Run: `dotnet build FiapDonateReceiver.slnx`
+Run: `dotnet build FiapDonateWorker.slnx`
 Expected: `Compilação com êxito.`, `0 Erro(s)`. (Runtime verification of `/health` and `/metrics` against real infrastructure happens in Task 10, once `docker-compose` is up.)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/FiapDonateReceiver.Worker
+git add src/FiapDonateWorker.Worker
 git commit -m "feat: expose /health and /metrics endpoints"
 ```
 
@@ -944,7 +944,7 @@ git commit -m "feat: expose /health and /metrics endpoints"
 - Create: `docker-compose.yml`
 
 **Interfaces:**
-- Produces: image `fiapdonatereceiver-worker:local` listening on container port `8080`; `docker-compose.yml` services `postgres` (port 5432, db `conexao_solidaria`, user/password `postgres`/`postgres`) and `rabbitmq` (ports 5672/15672, user/password `guest`/`guest`) — matches the defaults in `appsettings.json` (Task 5).
+- Produces: image `fiapdonateworker-worker:local` listening on container port `8080`; `docker-compose.yml` services `postgres` (port 5432, db `conexao_solidaria`, user/password `postgres`/`postgres`) and `rabbitmq` (ports 5672/15672, user/password `guest`/`guest`) — matches the defaults in `appsettings.json` (Task 5).
 
 - [ ] **Step 1: Create `.dockerignore`**
 
@@ -966,20 +966,20 @@ docs/
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-COPY ["FiapDonateReceiver.slnx", "./"]
-COPY ["src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj", "src/FiapDonateReceiver.Worker/"]
-COPY ["src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj", "src/FiapDonateReceiver.Infrastructure/"]
-COPY ["src/FiapDonateReceiver.Domain/FiapDonateReceiver.Domain.csproj", "src/FiapDonateReceiver.Domain/"]
-RUN dotnet restore "src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj"
+COPY ["FiapDonateWorker.slnx", "./"]
+COPY ["src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj", "src/FiapDonateWorker.Worker/"]
+COPY ["src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj", "src/FiapDonateWorker.Infrastructure/"]
+COPY ["src/FiapDonateWorker.Domain/FiapDonateWorker.Domain.csproj", "src/FiapDonateWorker.Domain/"]
+RUN dotnet restore "src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj"
 
 COPY src/ src/
-RUN dotnet publish "src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj" -c Release -o /app/publish --no-restore
+RUN dotnet publish "src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj" -c Release -o /app/publish --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 EXPOSE 8080
-ENTRYPOINT ["dotnet", "FiapDonateReceiver.Worker.dll"]
+ENTRYPOINT ["dotnet", "FiapDonateWorker.Worker.dll"]
 ```
 
 - [ ] **Step 3: Create the local development compose file**
@@ -1011,8 +1011,8 @@ volumes:
 
 - [ ] **Step 4: Verify the image builds**
 
-Run: `docker build -t fiapdonatereceiver-worker:local .`
-Expected: build completes with `writing image sha256:...` / `naming to docker.io/library/fiapdonatereceiver-worker:local` and no errors. If Docker is not installed or not running in this environment, note that explicitly instead of claiming success.
+Run: `docker build -t fiapdonateworker-worker:local .`
+Expected: build completes with `writing image sha256:...` / `naming to docker.io/library/fiapdonateworker-worker:local` and no errors. If Docker is not installed or not running in this environment, note that explicitly instead of claiming success.
 
 - [ ] **Step 5: Verify the compose stack starts**
 
@@ -1042,7 +1042,7 @@ git commit -m "chore: add Dockerfile and local-development compose file"
 - Modify: `.gitignore` (ignore the real `k8s/secret.yaml` if a teammate creates one from the example)
 
 **Interfaces:**
-- Produces: Deployment `fiapdonatereceiver-worker` (label `app: fiapdonatereceiver-worker`, container port `8080`, probes on `/health`) wired to ConfigMap `fiapdonatereceiver-worker-config` and Secret `fiapdonatereceiver-worker-secret`; Service `fiapdonatereceiver-worker` (ClusterIP, port `8080`).
+- Produces: Deployment `fiapdonateworker-worker` (label `app: fiapdonateworker-worker`, container port `8080`, probes on `/health`) wired to ConfigMap `fiapdonateworker-worker-config` and Secret `fiapdonateworker-worker-secret`; Service `fiapdonateworker-worker` (ClusterIP, port `8080`).
 
 - [ ] **Step 1: Create the ConfigMap**
 
@@ -1052,7 +1052,7 @@ git commit -m "chore: add Dockerfile and local-development compose file"
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: fiapdonatereceiver-worker-config
+  name: fiapdonateworker-worker-config
 data:
   RabbitMq__Host: "rabbitmq"
   RabbitMq__VirtualHost: "/"
@@ -1067,7 +1067,7 @@ data:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: fiapdonatereceiver-worker-secret
+  name: fiapdonateworker-worker-secret
 type: Opaque
 stringData:
   RabbitMq__Password: "guest"
@@ -1082,28 +1082,28 @@ stringData:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fiapdonatereceiver-worker
+  name: fiapdonateworker-worker
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: fiapdonatereceiver-worker
+      app: fiapdonateworker-worker
   template:
     metadata:
       labels:
-        app: fiapdonatereceiver-worker
+        app: fiapdonateworker-worker
     spec:
       containers:
         - name: worker
-          image: fiapdonatereceiver-worker:local
+          image: fiapdonateworker-worker:local
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           envFrom:
             - configMapRef:
-                name: fiapdonatereceiver-worker-config
+                name: fiapdonateworker-worker-config
             - secretRef:
-                name: fiapdonatereceiver-worker-secret
+                name: fiapdonateworker-worker-secret
           livenessProbe:
             httpGet:
               path: /health
@@ -1126,10 +1126,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: fiapdonatereceiver-worker
+  name: fiapdonateworker-worker
 spec:
   selector:
-    app: fiapdonatereceiver-worker
+    app: fiapdonateworker-worker
   ports:
     - port: 8080
       targetPort: 8080
@@ -1147,7 +1147,7 @@ k8s/secret.yaml
 - [ ] **Step 6: Validate the manifests**
 
 Run: `kubectl apply --dry-run=client -f k8s/configmap.yaml -f k8s/secret.example.yaml -f k8s/deployment.yaml -f k8s/service.yaml`
-Expected: `configmap/fiapdonatereceiver-worker-config created (dry run)`, similarly for the other 3 resources, no errors. If `kubectl` is not installed/configured in this environment, note that explicitly instead of claiming success — the YAML has still been hand-verified against the Kubernetes API shapes above.
+Expected: `configmap/fiapdonateworker-worker-config created (dry run)`, similarly for the other 3 resources, no errors. If `kubectl` is not installed/configured in this environment, note that explicitly instead of claiming success — the YAML has still been hand-verified against the Kubernetes API shapes above.
 
 - [ ] **Step 7: Commit**
 
@@ -1191,16 +1191,16 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Restore
-        run: dotnet restore FiapDonateReceiver.slnx
+        run: dotnet restore FiapDonateWorker.slnx
 
       - name: Build
-        run: dotnet build FiapDonateReceiver.slnx --no-restore --configuration Release
+        run: dotnet build FiapDonateWorker.slnx --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test FiapDonateReceiver.slnx --no-build --configuration Release
+        run: dotnet test FiapDonateWorker.slnx --no-build --configuration Release
 
       - name: Build Docker image
-        run: docker build -t fiapdonatereceiver-worker:${{ github.sha }} -f Dockerfile .
+        run: docker build -t fiapdonateworker-worker:${{ github.sha }} -f Dockerfile .
 ```
 
 - [ ] **Step 2: Validate the YAML locally**
@@ -1234,7 +1234,7 @@ This is the only step in this plan that touches the shared remote. Ask the user 
 `README.md`:
 
 ```markdown
-# FiapDonateReceiver
+# FiapDonateWorker
 
 Worker/Consumer de doações da plataforma "Conexão Solidária" (Hackathon FIAP).
 Consome o evento `DoacaoRecebidaEvent` de uma fila RabbitMQ e atualiza o valor
@@ -1246,7 +1246,7 @@ repositório do time.
 
 ## Arquitetura
 
-Veja `docs/superpowers/specs/2026-08-17-fiapdonatereceiver-design.md` para o
+Veja `docs/superpowers/specs/2026-08-17-fiapdonateworker-design.md` para o
 desenho completo (decisões de arquitetura, modelo de dados, contrato do
 evento e regras de negócio).
 
@@ -1275,7 +1275,7 @@ evento e regras de negócio).
 3. Aplique as migrations do banco (cria a tabela `Doacoes`):
 
    ```bash
-   dotnet ef database update --project src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj --startup-project src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj
+   dotnet ef database update --project src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj --startup-project src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj
    ```
 
    > A tabela `Campanhas` não é criada por este comando — ela pertence ao
@@ -1295,7 +1295,7 @@ evento e regras de negócio).
 4. Rode o Worker:
 
    ```bash
-   dotnet run --project src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj
+   dotnet run --project src/FiapDonateWorker.Worker/FiapDonateWorker.Worker.csproj
    ```
 
 5. Confirme que o serviço está saudável:
@@ -1322,7 +1322,7 @@ evento e regras de negócio).
        "valorDoacao": 50.00,
        "dataHoraRecebida": "2026-08-17T12:00:00Z"
      },
-     "messageType": ["urn:message:FiapDonateReceiver.Worker.Events:DoacaoRecebidaEvent"]
+     "messageType": ["urn:message:FiapDonateWorker.Worker.Events:DoacaoRecebidaEvent"]
    }
    ```
 
@@ -1338,13 +1338,13 @@ evento e regras de negócio).
 ## Rodando os testes automatizados
 
 ```bash
-dotnet test FiapDonateReceiver.slnx
+dotnet test FiapDonateWorker.slnx
 ```
 
 ## Deploy local em Kubernetes
 
 ```bash
-docker build -t fiapdonatereceiver-worker:local .
+docker build -t fiapdonateworker-worker:local .
 cp k8s/secret.example.yaml k8s/secret.yaml   # ajuste credenciais se necessário
 kubectl apply -f k8s/configmap.yaml -f k8s/secret.yaml -f k8s/deployment.yaml -f k8s/service.yaml
 kubectl get pods
@@ -1354,12 +1354,12 @@ kubectl get pods
 
 ```
 src/
-  FiapDonateReceiver.Domain/          entidades e regras de negócio (sem dependências externas)
-  FiapDonateReceiver.Infrastructure/  EF Core, migrations, persistência
-  FiapDonateReceiver.Worker/          host ASP.NET Core + consumer MassTransit + /health /metrics
+  FiapDonateWorker.Domain/          entidades e regras de negócio (sem dependências externas)
+  FiapDonateWorker.Infrastructure/  EF Core, migrations, persistência
+  FiapDonateWorker.Worker/          host ASP.NET Core + consumer MassTransit + /health /metrics
 tests/
-  FiapDonateReceiver.Domain.Tests/
-  FiapDonateReceiver.Infrastructure.Tests/
+  FiapDonateWorker.Domain.Tests/
+  FiapDonateWorker.Infrastructure.Tests/
 k8s/                                  manifests Kubernetes (Deployment, Service, ConfigMap, Secret)
 docs/superpowers/specs/               documento de design
 docs/superpowers/plans/               este plano de implementação

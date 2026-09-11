@@ -1,9 +1,9 @@
-using FiapDonateReceiver.Infrastructure;
-using FiapDonateReceiver.Worker.Events;
+using FiapDonateWorker.Infrastructure;
+using FiapDonateWorker.Api.Events;
 using MassTransit;
 using Prometheus;
 
-namespace FiapDonateReceiver.Worker.Consumers;
+namespace FiapDonateWorker.Api.Consumers;
 
 public class DoacaoRecebidaConsumer : IConsumer<DoacaoRecebidaEvent>
 {

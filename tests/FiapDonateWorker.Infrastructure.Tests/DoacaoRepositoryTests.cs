@@ -1,16 +1,16 @@
-using FiapDonateReceiver.Domain;
+using FiapDonateWorker.Domain;
 using Microsoft.EntityFrameworkCore;
 
-namespace FiapDonateReceiver.Infrastructure.Tests;
+namespace FiapDonateWorker.Infrastructure.Tests;
 
 public class DoacaoRepositoryTests
 {
-    private static ReceiverDbContext CriarContexto(string nomeBanco)
+    private static WorkerDbContext CriarContexto(string nomeBanco)
     {
-        var options = new DbContextOptionsBuilder<ReceiverDbContext>()
+        var options = new DbContextOptionsBuilder<WorkerDbContext>()
             .UseInMemoryDatabase(nomeBanco)
             .Options;
-        return new ReceiverDbContext(options);
+        return new WorkerDbContext(options);
     }
 
     [Fact]

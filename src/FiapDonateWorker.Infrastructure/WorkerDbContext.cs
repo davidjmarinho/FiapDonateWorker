@@ -1,11 +1,11 @@
-using FiapDonateReceiver.Domain;
+using FiapDonateWorker.Domain;
 using Microsoft.EntityFrameworkCore;
 
-namespace FiapDonateReceiver.Infrastructure;
+namespace FiapDonateWorker.Infrastructure;
 
-public class ReceiverDbContext : DbContext
+public class WorkerDbContext : DbContext
 {
-    public ReceiverDbContext(DbContextOptions<ReceiverDbContext> options) : base(options)
+    public WorkerDbContext(DbContextOptions<WorkerDbContext> options) : base(options)
     {
     }
 

@@ -1,5 +1,5 @@
-using FiapDonateReceiver.Infrastructure;
-using FiapDonateReceiver.Worker.Consumers;
+using FiapDonateWorker.Infrastructure;
+using FiapDonateWorker.Api.Consumers;
 using MassTransit;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
@@ -8,8 +8,8 @@ using RabbitMQ.Client;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = builder.Configuration.GetConnectionString("ReceiverDb")
-    ?? throw new InvalidOperationException("ConnectionStrings:ReceiverDb nao configurada.");
+var connectionString = builder.Configuration.GetConnectionString("WorkerDb")
+    ?? throw new InvalidOperationException("ConnectionStrings:WorkerDb nao configurada.");
 
 var rabbitHost = builder.Configuration["RabbitMq:Host"] ?? "localhost";
 var rabbitVirtualHost = builder.Configuration["RabbitMq:VirtualHost"] ?? "/";
@@ -17,7 +17,7 @@ var rabbitUsername = builder.Configuration["RabbitMq:Username"] ?? "guest";
 var rabbitPassword = builder.Configuration["RabbitMq:Password"] ?? "guest";
 var rabbitUri = $"amqp://{rabbitUsername}:{rabbitPassword}@{rabbitHost}{rabbitVirtualHost}";
 
-builder.Services.AddDbContext<ReceiverDbContext>(options =>
+builder.Services.AddDbContext<WorkerDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 builder.Services.AddScoped<DoacaoRepository>();
@@ -63,11 +63,11 @@ var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
-    var dbContext = scope.ServiceProvider.GetRequiredService<ReceiverDbContext>();
+    var dbContext = scope.ServiceProvider.GetRequiredService<WorkerDbContext>();
     await dbContext.Database.MigrateAsync();
 }
 
-app.MapGet("/", () => Results.Ok(new { service = "FiapDonateReceiver.Worker", status = "running" }));
+app.MapGet("/", () => Results.Ok(new { service = "FiapDonateWorker.Api", status = "running" }));
 
 // /health/live: apenas confirma que o processo esta de pe (nenhum check de
 // dependencia externa e executado) - usado pela liveness probe.

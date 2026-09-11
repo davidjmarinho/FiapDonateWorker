@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: fiapdonatereceiver-worker-config
+  name: fiapdonateworker-config
 data:
   RabbitMq__Host: "rabbitmq"
   RabbitMq__VirtualHost: "/"

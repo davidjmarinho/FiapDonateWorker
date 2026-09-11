@@ -1,4 +1,4 @@
-namespace FiapDonateReceiver.Domain;
+namespace FiapDonateWorker.Domain;
 
 public class Doacao
 {

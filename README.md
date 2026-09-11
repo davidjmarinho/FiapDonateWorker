@@ -1,8 +1,13 @@
-# FiapDonateReceiver
+# FiapDonateWorker
 
 Worker/Consumer de doações da plataforma "Conexão Solidária" (Hackathon FIAP).
 Consome o evento `DoacaoRecebidaEvent` de uma fila RabbitMQ e atualiza o valor
 arrecadado da campanha correspondente em PostgreSQL, de forma idempotente.
+
+> Este repositório nasceu como `FiapDonateReceiver` e foi migrado/renomeado
+> para `FiapDonateWorker` para refletir corretamente o papel que exerce no
+> hackathon (o "Worker/Consumer de Processamento de Doações" exigido pelo
+> enunciado). O histórico de commits original foi preservado na migração.
 
 Este repositório cobre **apenas** este microsserviço. A API de
 Campanhas/Usuários/Autenticação (que publica o evento) vive em outro
@@ -21,7 +26,7 @@ evento e regras de negócio).
 > sem valor inteiro e sem outro vocabulário. Qualquer divergência entre os
 > dois repositórios faz com que a campanha afetada deixe de ser reconhecida
 > como ativa e todas as doações a ela sejam rejeitadas silenciosamente. Veja
-> o comentário em `ReceiverDbContext.OnModelCreating` (mapeamento de
+> o comentário em `WorkerDbContext.OnModelCreating` (mapeamento de
 > `Campanha`).
 
 ## Pré-requisitos
@@ -50,7 +55,7 @@ evento e regras de negócio).
    `Doacoes`):
 
    ```bash
-   dotnet ef database update --project src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj --startup-project src/FiapDonateReceiver.Infrastructure/FiapDonateReceiver.Infrastructure.csproj
+   dotnet ef database update --project src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj --startup-project src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj
    ```
 
    > Este passo é opcional: o Worker aplica automaticamente as migrations
@@ -76,7 +81,7 @@ evento e regras de negócio).
 4. Rode o Worker:
 
    ```bash
-   dotnet run --project src/FiapDonateReceiver.Worker/FiapDonateReceiver.Worker.csproj
+   dotnet run --project src/FiapDonateWorker.Api/FiapDonateWorker.Api.csproj
    ```
 
 5. Confirme que o serviço está saudável:
@@ -114,7 +119,7 @@ evento e regras de negócio).
        "valorDoacao": 50.00,
        "dataHoraRecebida": "2026-08-17T12:00:00Z"
      },
-     "messageType": ["urn:message:FiapDonateReceiver.Worker.Events:DoacaoRecebidaEvent"]
+     "messageType": ["urn:message:FiapDonateWorker.Api.Events:DoacaoRecebidaEvent"]
    }
    ```
 
@@ -130,13 +135,13 @@ evento e regras de negócio).
 ## Rodando os testes automatizados
 
 ```bash
-dotnet test FiapDonateReceiver.slnx
+dotnet test FiapDonateWorker.slnx
 ```
 
 ## Deploy local em Kubernetes
 
 ```bash
-docker build -t fiapdonatereceiver-worker:local .
+docker build -t fiapdonateworker:local .
 cp k8s/secret.example.yaml k8s/secret.yaml   # ajuste credenciais se necessário
 kubectl apply -f k8s/configmap.yaml -f k8s/secret.yaml -f k8s/deployment.yaml -f k8s/service.yaml
 kubectl get pods
@@ -146,12 +151,12 @@ kubectl get pods
 
 ```
 src/
-  FiapDonateReceiver.Domain/          entidades e regras de negócio (sem dependências externas)
-  FiapDonateReceiver.Infrastructure/  EF Core, migrations, persistência
-  FiapDonateReceiver.Worker/          host ASP.NET Core + consumer MassTransit + /health /metrics
+  FiapDonateWorker.Domain/          entidades e regras de negócio (sem dependências externas)
+  FiapDonateWorker.Infrastructure/  EF Core, migrations, persistência
+  FiapDonateWorker.Api/             host ASP.NET Core + consumer MassTransit + /health /metrics
 tests/
-  FiapDonateReceiver.Domain.Tests/
-  FiapDonateReceiver.Infrastructure.Tests/
+  FiapDonateWorker.Domain.Tests/
+  FiapDonateWorker.Infrastructure.Tests/
 k8s/                                  manifests Kubernetes (Deployment, Service, ConfigMap, Secret)
 docs/superpowers/specs/               documento de design
 docs/superpowers/plans/               este plano de implementação

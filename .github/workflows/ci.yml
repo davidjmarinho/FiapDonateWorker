@@ -18,13 +18,13 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Restore
-        run: dotnet restore FiapDonateReceiver.slnx
+        run: dotnet restore FiapDonateWorker.slnx
 
       - name: Build
-        run: dotnet build FiapDonateReceiver.slnx --no-restore --configuration Release
+        run: dotnet build FiapDonateWorker.slnx --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test FiapDonateReceiver.slnx --no-build --configuration Release
+        run: dotnet test FiapDonateWorker.slnx --no-build --configuration Release
 
       - name: Build Docker image
-        run: docker build -t fiapdonatereceiver-worker:${{ github.sha }} -f Dockerfile .
+        run: docker build -t fiapdonateworker:${{ github.sha }} -f Dockerfile .

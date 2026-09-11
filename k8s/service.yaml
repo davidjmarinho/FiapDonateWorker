@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: fiapdonatereceiver-worker
+  name: fiapdonateworker
 spec:
   selector:
-    app: fiapdonatereceiver-worker
+    app: fiapdonateworker
   ports:
     - port: 8080
       targetPort: 8080

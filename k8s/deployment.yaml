@@ -1,28 +1,28 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fiapdonatereceiver-worker
+  name: fiapdonateworker
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: fiapdonatereceiver-worker
+      app: fiapdonateworker
   template:
     metadata:
       labels:
-        app: fiapdonatereceiver-worker
+        app: fiapdonateworker
     spec:
       containers:
         - name: worker
-          image: fiapdonatereceiver-worker:local
+          image: fiapdonateworker:local
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           envFrom:
             - configMapRef:
-                name: fiapdonatereceiver-worker-config
+                name: fiapdonateworker-config
             - secretRef:
-                name: fiapdonatereceiver-worker-secret
+                name: fiapdonateworker-secret
           livenessProbe:
             httpGet:
               path: /health/live

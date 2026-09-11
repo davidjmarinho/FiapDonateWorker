@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\FiapDonateReceiver.Infrastructure\FiapDonateReceiver.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\FiapDonateWorker.Infrastructure\FiapDonateWorker.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
