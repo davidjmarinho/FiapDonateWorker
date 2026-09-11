@@ -18,7 +18,7 @@ var rabbitPassword = builder.Configuration["RabbitMq:Password"] ?? "guest";
 var rabbitUri = $"amqp://{rabbitUsername}:{rabbitPassword}@{rabbitHost}{rabbitVirtualHost}";
 
 builder.Services.AddDbContext<WorkerDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    options.UseSqlServer(connectionString));
 
 builder.Services.AddScoped<DoacaoRepository>();
 
@@ -51,12 +51,12 @@ builder.Services.AddSingleton<IConnection>(sp =>
 });
 
 // Tags "ready" marcam os checks que dependem de infraestrutura externa
-// (Postgres/RabbitMQ). Eles alimentam apenas /health/ready: uma indisponibilidade
+// (SQL Server/RabbitMQ). Eles alimentam apenas /health/ready: uma indisponibilidade
 // transitória dessas dependências deve tirar o pod de circulação (readiness),
 // mas NAO deve derrubar o processo via liveness - reiniciar o pod nao conserta
 // uma dependencia externa fora do ar.
 builder.Services.AddHealthChecks()
-    .AddNpgSql(connectionString, name: "postgresql", tags: new[] { "ready" })
+    .AddSqlServer(connectionString, name: "sqlserver", tags: new[] { "ready" })
     .AddRabbitMQ(name: "rabbitmq", tags: new[] { "ready" });
 
 var app = builder.Build();
@@ -76,7 +76,7 @@ app.MapHealthChecks("/health/live", new HealthCheckOptions
     Predicate = _ => false
 });
 
-// /health/ready: executa os checks marcados com a tag "ready" (Postgres,
+// /health/ready: executa os checks marcados com a tag "ready" (SQL Server,
 // RabbitMQ) - usado pela readiness probe.
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {

@@ -8,10 +8,10 @@ public class WorkerDbContextFactory : IDesignTimeDbContextFactory<WorkerDbContex
     public WorkerDbContext CreateDbContext(string[] args)
     {
         var connectionString = Environment.GetEnvironmentVariable("WORKER_DB_CONNECTION")
-            ?? "Host=localhost;Port=5432;Database=conexao_solidaria;Username=postgres;Password=postgres";
+            ?? "Server=localhost,1433;Database=conexao_solidaria;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True;";
 
         var optionsBuilder = new DbContextOptionsBuilder<WorkerDbContext>();
-        optionsBuilder.UseNpgsql(connectionString);
+        optionsBuilder.UseSqlServer(connectionString);
 
         return new WorkerDbContext(optionsBuilder.Options);
     }

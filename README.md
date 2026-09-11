@@ -2,7 +2,7 @@
 
 Worker/Consumer de doações da plataforma "Conexão Solidária" (Hackathon FIAP).
 Consome o evento `DoacaoRecebidaEvent` de uma fila RabbitMQ e atualiza o valor
-arrecadado da campanha correspondente em PostgreSQL, de forma idempotente.
+arrecadado da campanha correspondente em SQL Server, de forma idempotente.
 
 > Este repositório nasceu como `FiapDonateReceiver` e foi migrado/renomeado
 > para `FiapDonateWorker` para refletir corretamente o papel que exerce no
@@ -39,7 +39,14 @@ evento e regras de negócio).
 
 ## Subindo a infraestrutura localmente
 
-1. Suba PostgreSQL e RabbitMQ:
+> Este `docker-compose.yml` sobe SQL Server + RabbitMQ **apenas para
+> desenvolvimento/teste isolado deste serviço**. Na integração completa do
+> sistema, o Worker se conecta ao SQL Server e ao RabbitMQ compartilhados
+> providos pelo repositório `FiapDonateServices` — basta ajustar a connection
+> string e o host do RabbitMQ (via `appsettings`/variáveis de ambiente/
+> `ConfigMap`/`Secret` do Kubernetes), sem alterar código.
+
+1. Suba SQL Server e RabbitMQ:
 
    ```bash
    docker compose up -d
@@ -66,15 +73,16 @@ evento e regras de negócio).
    >
    > A tabela `Campanhas` não é criada por este comando (nem pelo Worker) — ela pertence ao
    > repositório da API. Para testar este Worker isoladamente (sem a API no
-   > ar), crie manualmente uma linha de teste, por exemplo via `psql`:
+   > ar), crie manualmente uma linha de teste, por exemplo via `sqlcmd`:
    >
    > ```sql
-   > CREATE TABLE IF NOT EXISTS "Campanhas" (
-   >   "Id" uuid PRIMARY KEY,
-   >   "Status" text NOT NULL,
-   >   "ValorArrecadado" numeric NOT NULL
+   > IF OBJECT_ID('dbo.Campanhas', 'U') IS NULL
+   > CREATE TABLE dbo.Campanhas (
+   >   Id uniqueidentifier PRIMARY KEY,
+   >   Status nvarchar(50) NOT NULL,
+   >   ValorArrecadado decimal(18,2) NOT NULL
    > );
-   > INSERT INTO "Campanhas" ("Id", "Status", "ValorArrecadado")
+   > INSERT INTO dbo.Campanhas (Id, Status, ValorArrecadado)
    > VALUES ('11111111-1111-1111-1111-111111111111', 'Ativa', 0);
    > ```
 
@@ -98,7 +106,7 @@ evento e regras de negócio).
    >   dependências externas. Usado pela `livenessProbe` (`k8s/deployment.yaml`):
    >   uma falha aqui gera restart do pod, o que não faz sentido se o problema
    >   for uma dependência externa fora do ar.
-   > - `/health/ready` — checa PostgreSQL e RabbitMQ. Usado pela
+   > - `/health/ready` — checa SQL Server e RabbitMQ. Usado pela
    >   `readinessProbe`: uma falha aqui tira o pod de circulação sem reiniciá-lo.
    > - `/health` — mantido como alias de `/health/ready`, por compatibilidade.
 
@@ -123,10 +131,10 @@ evento e regras de negócio).
    }
    ```
 
-4. Confirme no PostgreSQL que o valor foi creditado:
+4. Confirme no SQL Server que o valor foi creditado:
 
    ```bash
-   docker compose exec postgres psql -U postgres -d conexao_solidaria -c "SELECT * FROM \"Campanhas\"; SELECT * FROM \"Doacoes\";"
+   docker compose exec sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong!Passw0rd' -C -d conexao_solidaria -Q "SELECT * FROM dbo.Campanhas; SELECT * FROM dbo.Doacoes;"
    ```
 
    O `ValorArrecadado` da campanha deve ter subido em 50.00, e deve existir

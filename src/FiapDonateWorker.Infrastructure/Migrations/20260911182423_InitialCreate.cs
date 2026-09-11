@@ -15,12 +15,12 @@ namespace FiapDonateWorker.Infrastructure.Migrations
                 name: "Doacoes",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    IdCampanha = table.Column<Guid>(type: "uuid", nullable: false),
-                    ValorDoacao = table.Column<decimal>(type: "numeric", nullable: false),
-                    DataHoraRecebida = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    DataHoraProcessada = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    Status = table.Column<string>(type: "text", nullable: false)
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    IdCampanha = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ValorDoacao = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    DataHoraRecebida = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    DataHoraProcessada = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false)
                 },
                 constraints: table =>
                 {

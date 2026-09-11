@@ -3,6 +3,8 @@ kind: ConfigMap
 metadata:
   name: fiapdonateworker-config
 data:
+  # Host "rabbitmq" assume o nome do Service Kubernetes exposto pela infra
+  # compartilhada (repositório FiapDonateServices). Ajuste se o nome real for outro.
   RabbitMq__Host: "rabbitmq"
   RabbitMq__VirtualHost: "/"
   RabbitMq__Username: "guest"

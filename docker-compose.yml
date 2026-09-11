@@ -1,14 +1,13 @@
 services:
-  postgres:
-    image: postgres:16
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
-      POSTGRES_DB: conexao_solidaria
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "YourStrong!Passw0rd"
     ports:
-      - "5432:5432"
+      - "1433:1433"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - sqlserver-data:/var/opt/mssql
 
   rabbitmq:
     image: rabbitmq:3.13-management
@@ -17,4 +16,4 @@ services:
       - "15672:15672"
 
 volumes:
-  postgres-data:
+  sqlserver-data:

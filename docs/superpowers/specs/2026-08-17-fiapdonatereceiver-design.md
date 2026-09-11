@@ -67,9 +67,19 @@ Escolhido sobre .NET 9/10 disponíveis na máquina por ser a versão com maior
 compatibilidade de bibliotecas (MassTransit, Npgsql, EF Core) e imagens
 Docker oficiais mais maduras — reduz risco sob prazo curto.
 
-### Banco de dados: PostgreSQL compartilhado com a API
+### Banco de dados: SQL Server compartilhado com a API
 
-O Worker conecta no mesmo banco PostgreSQL usado pela API principal. Isso
+> **Atualização (2026-09-11):** a decisão original deste documento era
+> PostgreSQL (texto abaixo preservado como registro histórico). O time optou
+> por padronizar em **SQL Server** para todos os serviços, já que a API de
+> Campanhas/Usuários já usa esse motor (inclusive para as tabelas de
+> Identity). O Worker foi migrado de Npgsql para
+> `Microsoft.EntityFrameworkCore.SqlServer`; o token de concorrência
+> otimista deixou de usar a coluna de sistema `xmin` (específica do
+> PostgreSQL) e passou a usar a própria coluna de negócio `ValorArrecadado`
+> via `IsConcurrencyToken()`, portável entre providers.
+
+O Worker conecta no mesmo banco relacional usado pela API principal. Isso
 evita ter que sincronizar dados entre bancos separados em um MVP de
 hackathon com dois times/repositórios trabalhando em paralelo. O Worker
 mapeia via EF Core apenas o subconjunto de colunas que precisa da tabela

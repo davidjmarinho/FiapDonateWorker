@@ -8,7 +8,7 @@ namespace FiapDonateWorker.Api.Consumers;
 public class DoacaoRecebidaConsumer : IConsumer<DoacaoRecebidaEvent>
 {
     private static readonly Counter DoacoesProcessadas = Metrics.CreateCounter(
-        "receiver_doacoes_processadas_total",
+        "worker_doacoes_processadas_total",
         "Quantidade de doacoes processadas pelo worker, particionadas por resultado.",
         new CounterConfiguration { LabelNames = new[] { "resultado" } });
 
