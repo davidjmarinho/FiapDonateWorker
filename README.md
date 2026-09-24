@@ -20,15 +20,19 @@ Veja `docs/superpowers/specs/2026-08-17-fiapdonatereceiver-design.md` para o
 desenho completo (decisões de arquitetura, modelo de dados, contrato do
 evento e regras de negócio).
 
-> **Contrato entre repositórios (`Campanhas.Status`):** a tabela `Campanhas` é
-> escrita pelo repositório da API, não por este Worker. Este Worker lê a
-> coluna `Status` como texto e espera exatamente os nomes dos membros do enum
-> `CampanhaStatus` (`Ativa`, `Concluida`, `Cancelada`), sem variação de caixa,
-> sem valor inteiro e sem outro vocabulário. Qualquer divergência entre os
-> dois repositórios faz com que a campanha afetada deixe de ser reconhecida
-> como ativa e todas as doações a ela sejam rejeitadas silenciosamente. Veja
-> o comentário em `WorkerDbContext.OnModelCreating` (mapeamento de
-> `Campanha`).
+> **Arquitetura database-per-service:** este Worker é dono do seu próprio banco
+> (`conexao_solidaria`), incluindo uma **réplica local** da tabela `Campanhas`
+> criada pelas migrations deste repositório. A tabela `Campanhas` da API (fonte
+> da verdade) **não é compartilhada**. A integração entre os dois serviços é
+> feita **100% por eventos** no RabbitMQ:
+>
+> 1. A API publica `DoacaoRecebidaEvent` (só para campanhas ativas — ela valida
+>    a atividade no intake). Ao recebê-lo, o Worker cria a réplica local da
+>    campanha como `Ativa` (se ainda não existir) e credita o valor.
+> 2. Após creditar, o Worker publica de volta `ValorArrecadadoAtualizadoEvent`
+>    com o **valor total absoluto** da campanha, para que a API atualize seu
+>    próprio `Campaigns.ValorArrecadado` e o Painel de Transparência reflita a
+>    doação processada.
 
 ## Pré-requisitos
 
@@ -79,8 +83,8 @@ As senhas **não** ficam versionadas. Copie-as dos arquivos em
    $env:RabbitMq__Password = $rmq.Trim()
    ```
 
-4. (Opcional) Aplique as migrations do banco manualmente (cria a tabela
-   `Doacoes`):
+4. (Opcional) Aplique as migrations do banco manualmente (cria as tabelas
+   `Doacoes` e `Campanhas`):
 
    ```bash
    dotnet ef database update --project src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj --startup-project src/FiapDonateWorker.Infrastructure/FiapDonateWorker.Infrastructure.csproj
@@ -92,20 +96,10 @@ As senhas **não** ficam versionadas. Copie-as dos arquivos em
    > manual se quiser aplicar as migrations sem subir o Worker (por exemplo,
    > para inspecionar o schema antes de rodar o serviço).
    >
-   > A tabela `Campanhas` não é criada por este comando (nem pelo Worker) — ela pertence ao
-   > repositório da API. Para testar este Worker isoladamente (sem a API no
-   > ar), crie manualmente uma linha de teste no SQL Server compartilhado:
-
-   ```sql
-   IF OBJECT_ID('dbo.Campanhas', 'U') IS NULL
-   CREATE TABLE dbo.Campanhas (
-     Id uniqueidentifier PRIMARY KEY,
-     Status nvarchar(50) NOT NULL,
-     ValorArrecadado decimal(18,2) NOT NULL
-   );
-   INSERT INTO dbo.Campanhas (Id, Status, ValorArrecadado)
-   VALUES ('11111111-1111-1111-1111-111111111111', 'Ativa', 0);
-   ```
+   > As tabelas `Doacoes` **e** `Campanhas` são criadas pelas migrations deste
+   > repositório (o Worker é dono do seu banco). Não é preciso criar `Campanhas`
+   > manualmente: o Worker cria a réplica local da campanha automaticamente ao
+   > receber o primeiro `DoacaoRecebidaEvent` dela.
 
 5. Rode o Worker:
 

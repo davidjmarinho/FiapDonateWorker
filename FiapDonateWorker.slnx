@@ -7,5 +7,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/FiapDonateWorker.Domain.Tests/FiapDonateWorker.Domain.Tests.csproj" />
     <Project Path="tests/FiapDonateWorker.Infrastructure.Tests/FiapDonateWorker.Infrastructure.Tests.csproj" />
+    <Project Path="tests/FiapDonateWorker.Api.Tests/FiapDonateWorker.Api.Tests.csproj" />
   </Folder>
 </Solution>

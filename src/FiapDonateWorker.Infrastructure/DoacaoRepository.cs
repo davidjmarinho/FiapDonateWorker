@@ -12,7 +12,7 @@ public class DoacaoRepository
         _dbContext = dbContext;
     }
 
-    public async Task<bool> ProcessarDoacaoAsync(
+    public async Task<ResultadoProcessamentoDoacao> ProcessarDoacaoAsync(
         Guid doacaoId,
         Guid idCampanha,
         decimal valorDoacao,
@@ -24,11 +24,32 @@ public class DoacaoRepository
 
         if (jaProcessada)
         {
-            return false;
+            return new ResultadoProcessamentoDoacao(
+                Processada: false,
+                Creditada: false,
+                IdCampanha: idCampanha,
+                ValorArrecadadoAtual: 0m);
         }
 
         var campanha = await _dbContext.Campanhas
             .SingleOrDefaultAsync(c => c.Id == idCampanha, cancellationToken);
+
+        if (campanha is null)
+        {
+            // Este Worker é dono apenas de uma réplica local da campanha. A tabela
+            // Campanhas da API (fonte da verdade) NÃO é compartilhada. A API só
+            // publica DoacaoRecebidaEvent para campanhas ativas (validação de
+            // atividade no intake, em DonationService.RegistrarIntencaoAsync), então
+            // ao ver uma campanha ainda desconhecida criamos a réplica local como
+            // Ativa e creditamos - em vez de rejeitar por "campanha ausente".
+            campanha = new Campanha
+            {
+                Id = idCampanha,
+                Status = CampanhaStatus.Ativa,
+                ValorArrecadado = 0m
+            };
+            _dbContext.Campanhas.Add(campanha);
+        }
 
         var doacao = new Doacao
         {
@@ -53,10 +74,10 @@ public class DoacaoRepository
                 await _dbContext.SaveChangesAsync(cancellationToken);
                 break;
             }
-            catch (DbUpdateConcurrencyException) when (tentativa < maxTentativas && campanha is not null)
+            catch (DbUpdateConcurrencyException) when (tentativa < maxTentativas)
             {
                 // Outra instância do consumer alterou Campanha.ValorArrecadado
-                // (token de concorrência "xmin") entre a leitura e o SaveChanges.
+                // (token de concorrência otimista) entre a leitura e o SaveChanges.
                 // Recarrega o valor atual do banco e reaplica apenas o incremento
                 // numérico decidido por DoacaoProcessor.Processar - não reavaliamos
                 // o status da doação, pois mudança de status de campanha em voo é um
@@ -71,6 +92,10 @@ public class DoacaoRepository
             }
         }
 
-        return true;
+        return new ResultadoProcessamentoDoacao(
+            Processada: true,
+            Creditada: doacaoCreditada,
+            IdCampanha: idCampanha,
+            ValorArrecadadoAtual: campanha.ValorArrecadado);
     }
 }
