@@ -16,32 +16,23 @@ public class WorkerDbContext : DbContext
     {
         modelBuilder.Entity<Campanha>(entity =>
         {
-            // Campanhas é criada pelas migrations do repositório da API; aqui mapeamos
-            // apenas as colunas necessárias e excluímos a tabela das migrations deste projeto.
-            entity.ToTable("Campanhas", t => t.ExcludeFromMigrations());
+            // Este Worker é dono da sua própria réplica local da campanha (arquitetura
+            // database-per-service). A tabela Campanhas da API (fonte da verdade) NÃO é
+            // compartilhada: a réplica é populada pelos eventos recebidos e mantida pelas
+            // migrations deste projeto.
+            entity.ToTable("Campanhas");
             entity.HasKey(c => c.Id);
 
-            // Contrato entre repositórios: o repositório da API grava "Status" como
-            // texto puro usando exatamente os nomes dos membros do enum CampanhaStatus
-            // ("Ativa", "Concluida", "Cancelada"), sem variação de caixa e sem usar um
-            // vocabulário diferente ou o valor inteiro do enum. Qualquer divergência faz
-            // com que a leitura falhe silenciosamente em reconhecer a campanha como ativa
-            // (HasConversion<string>() abaixo não lança erro em caso de valor
-            // desconhecido no sentido esperado por este código - ver DoacaoProcessor),
-            // rejeitando todas as doações daquela campanha sem nenhum aviso.
+            // Status é persistido como texto usando exatamente os nomes dos membros do
+            // enum CampanhaStatus ("Ativa", "Concluida", "Cancelada").
             entity.Property(c => c.Status).HasConversion<string>();
 
             // Token de concorrência otimista: usa a própria coluna de negócio
-            // ValorArrecadado (em vez de uma coluna de sistema específica de
-            // provider, como o "xmin" do PostgreSQL) para proteger o incremento
-            // contra lost updates quando múltiplas instâncias do consumer
-            // processam doações concorrentes para a mesma campanha - ver retry em
-            // DoacaoRepository.ProcessarDoacaoAsync. Funciona igual em qualquer
-            // provider (PostgreSQL, SQL Server, etc.) e não exige nenhuma coluna
-            // extra na tabela Campanhas, que não é dona deste projeto.
-            // decimal(18,2): precisão combinada com o mapeamento de MetaFinanceira/
-            // ValorArrecadado no repositório da API (FiapDonateCampaign.AppDbContext) -
-            // sem isso o SQL Server usa decimal(18,0) por padrão e trunca os centavos.
+            // ValorArrecadado para proteger o incremento contra lost updates quando
+            // múltiplas instâncias do consumer processam doações concorrentes para a
+            // mesma campanha - ver retry em DoacaoRepository.ProcessarDoacaoAsync.
+            // decimal(18,2): mantém a precisão de centavos (sem isso o SQL Server usa
+            // decimal(18,0) por padrão e trunca os centavos).
             entity.Property(c => c.ValorArrecadado)
                 .HasColumnType("decimal(18,2)")
                 .IsConcurrencyToken();

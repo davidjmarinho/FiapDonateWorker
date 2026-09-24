@@ -25,20 +25,32 @@ public class DoacaoRecebidaConsumer : IConsumer<DoacaoRecebidaEvent>
     {
         var evento = context.Message;
 
-        var processada = await _repositorio.ProcessarDoacaoAsync(
+        var resultado = await _repositorio.ProcessarDoacaoAsync(
             evento.DoacaoId,
             evento.IdCampanha,
             evento.ValorDoacao,
             evento.DataHoraRecebida,
             context.CancellationToken);
 
-        if (!processada)
+        if (!resultado.Processada)
         {
             _logger.LogInformation(
                 "Doacao {DoacaoId} ja havia sido processada anteriormente, ignorando duplicata.",
                 evento.DoacaoId);
             DoacoesProcessadas.WithLabels("duplicada").Inc();
             return;
+        }
+
+        if (resultado.Creditada)
+        {
+            // Devolve à API (dona da campanha) o valor total arrecadado atual, para que
+            // ela atualize seu proprio Campaigns.ValorArrecadado e o Painel de
+            // Transparencia reflita a doacao processada. Valor absoluto = consumo
+            // idempotente do lado da API.
+            await context.Publish(new ValorArrecadadoAtualizadoEvent(
+                IdCampanha: resultado.IdCampanha,
+                ValorArrecadado: resultado.ValorArrecadadoAtual,
+                AtualizadoEm: DateTimeOffset.UtcNow));
         }
 
         DoacoesProcessadas.WithLabels("processada").Inc();
