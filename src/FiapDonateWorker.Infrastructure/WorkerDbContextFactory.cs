@@ -8,7 +8,8 @@ public class WorkerDbContextFactory : IDesignTimeDbContextFactory<WorkerDbContex
     public WorkerDbContext CreateDbContext(string[] args)
     {
         var connectionString = Environment.GetEnvironmentVariable("WORKER_DB_CONNECTION")
-            ?? "Server=localhost,1433;Database=conexao_solidaria;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True;";
+            ?? Environment.GetEnvironmentVariable("ConnectionStrings__WorkerDb")
+            ?? "Server=localhost,1433;Database=conexao_solidaria;User Id=sa;TrustServerCertificate=True;";
 
         var optionsBuilder = new DbContextOptionsBuilder<WorkerDbContext>();
         optionsBuilder.UseSqlServer(connectionString);

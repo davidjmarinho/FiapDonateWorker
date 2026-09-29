@@ -13,8 +13,8 @@ var connectionString = builder.Configuration.GetConnectionString("WorkerDb")
 
 var rabbitHost = builder.Configuration["RabbitMq:Host"] ?? "localhost";
 var rabbitVirtualHost = builder.Configuration["RabbitMq:VirtualHost"] ?? "/";
-var rabbitUsername = builder.Configuration["RabbitMq:Username"] ?? "guest";
-var rabbitPassword = builder.Configuration["RabbitMq:Password"] ?? "guest";
+var rabbitUsername = builder.Configuration["RabbitMq:Username"] ?? "fiapdonate";
+var rabbitPassword = builder.Configuration["RabbitMq:Password"] ?? string.Empty;
 var rabbitUri = $"amqp://{rabbitUsername}:{rabbitPassword}@{rabbitHost}{rabbitVirtualHost}";
 
 builder.Services.AddDbContext<WorkerDbContext>(options =>

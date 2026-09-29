@@ -1,11 +1,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: fiapdonateworker
+  name: fiapdonate-worker
+  namespace: fiapdonate
 spec:
   selector:
-    app: fiapdonateworker
+    app: fiapdonate-worker
   ports:
-    - port: 8080
+    - name: http
+      port: 8080
       targetPort: 8080
   type: ClusterIP

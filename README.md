@@ -11,7 +11,8 @@ arrecadado da campanha correspondente em SQL Server, de forma idempotente.
 
 Este repositório cobre **apenas** este microsserviço. A API de
 Campanhas/Usuários/Autenticação (que publica o evento) vive em outro
-repositório do time.
+repositório do time. RabbitMQ e SQL Server **não** são subidos aqui — eles
+vêm do repositório `FiapDonateServices`.
 
 ## Arquitetura
 
@@ -32,21 +33,32 @@ evento e regras de negócio).
 ## Pré-requisitos
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (ou
-  equivalente, com suporte a `docker compose`)
+- Infraestrutura compartilhada do `FiapDonateServices` no ar (SQL Server na
+  porta `1433` e RabbitMQ nas portas `5672` / `15672`)
 - (Opcional, para deploy local em Kubernetes) `kubectl` + um cluster local
   (Minikube, Kind ou Docker Desktop Kubernetes)
 
-## Subindo a infraestrutura localmente
+## Apontamento para o FiapDonateServices
 
-> Este `docker-compose.yml` sobe SQL Server + RabbitMQ **apenas para
-> desenvolvimento/teste isolado deste serviço**. Na integração completa do
-> sistema, o Worker se conecta ao SQL Server e ao RabbitMQ compartilhados
-> providos pelo repositório `FiapDonateServices` — basta ajustar a connection
-> string e o host do RabbitMQ (via `appsettings`/variáveis de ambiente/
-> `ConfigMap`/`Secret` do Kubernetes), sem alterar código.
+O Worker espera os mesmos hosts/contratos da infra compartilhada:
 
-1. Suba SQL Server e RabbitMQ:
+| Recurso | Host (local / `dotnet run`) | Host (Docker/K8s na rede `fiapdonate`) |
+|---|---|---|
+| SQL Server | `localhost,1433` | `sqlserver,1433` |
+| Banco | `conexao_solidaria` (contrato do `FiapDonateServices`) | `conexao_solidaria` |
+| RabbitMQ AMQP | `localhost:5672` | `rabbitmq:5672` |
+| RabbitMQ UI | http://localhost:15672 | Service `rabbitmq` porta `15672` |
+| Usuário RabbitMQ | `fiapdonate` | `fiapdonate` |
+| Fila | `doacao-recebida-queue` | `doacao-recebida-queue` |
+
+As senhas **não** ficam versionadas. Copie-as dos arquivos em
+`FiapDonateServices/secrets/` (`sqlserver_sa_password.txt` e
+`rabbitmq_password.txt`) e injete via variável de ambiente (local) ou
+`Secret` (Kubernetes).
+
+## Subindo o Worker localmente
+
+1. No repositório `FiapDonateServices`, suba a infra compartilhada:
 
    ```bash
    docker compose up -d
@@ -58,7 +70,16 @@ evento e regras de negócio).
    dotnet tool restore
    ```
 
-3. (Opcional) Aplique as migrations do banco manualmente (cria a tabela
+3. Exporte as senhas da infra (PowerShell):
+
+   ```powershell
+   $sa = Get-Content ..\FiapDonateServices\secrets\sqlserver_sa_password.txt -Raw
+   $rmq = Get-Content ..\FiapDonateServices\secrets\rabbitmq_password.txt -Raw
+   $env:ConnectionStrings__WorkerDb = "Server=localhost,1433;Database=conexao_solidaria;User Id=sa;Password=$sa;TrustServerCertificate=True;"
+   $env:RabbitMq__Password = $rmq.Trim()
+   ```
+
+4. (Opcional) Aplique as migrations do banco manualmente (cria a tabela
    `Doacoes`):
 
    ```bash
@@ -67,36 +88,36 @@ evento e regras de negócio).
 
    > Este passo é opcional: o Worker aplica automaticamente as migrations
    > pendentes na inicialização (`dbContext.Database.MigrateAsync()` em
-   > `Program.cs`), então basta rodar o passo 4 abaixo. Use este comando
+   > `Program.cs`), então basta rodar o passo 5 abaixo. Use este comando
    > manual se quiser aplicar as migrations sem subir o Worker (por exemplo,
    > para inspecionar o schema antes de rodar o serviço).
    >
    > A tabela `Campanhas` não é criada por este comando (nem pelo Worker) — ela pertence ao
    > repositório da API. Para testar este Worker isoladamente (sem a API no
-   > ar), crie manualmente uma linha de teste, por exemplo via `sqlcmd`:
-   >
-   > ```sql
-   > IF OBJECT_ID('dbo.Campanhas', 'U') IS NULL
-   > CREATE TABLE dbo.Campanhas (
-   >   Id uniqueidentifier PRIMARY KEY,
-   >   Status nvarchar(50) NOT NULL,
-   >   ValorArrecadado decimal(18,2) NOT NULL
-   > );
-   > INSERT INTO dbo.Campanhas (Id, Status, ValorArrecadado)
-   > VALUES ('11111111-1111-1111-1111-111111111111', 'Ativa', 0);
-   > ```
+   > ar), crie manualmente uma linha de teste no SQL Server compartilhado:
 
-4. Rode o Worker:
+   ```sql
+   IF OBJECT_ID('dbo.Campanhas', 'U') IS NULL
+   CREATE TABLE dbo.Campanhas (
+     Id uniqueidentifier PRIMARY KEY,
+     Status nvarchar(50) NOT NULL,
+     ValorArrecadado decimal(18,2) NOT NULL
+   );
+   INSERT INTO dbo.Campanhas (Id, Status, ValorArrecadado)
+   VALUES ('11111111-1111-1111-1111-111111111111', 'Ativa', 0);
+   ```
+
+5. Rode o Worker:
 
    ```bash
    dotnet run --project src/FiapDonateWorker.Api/FiapDonateWorker.Api.csproj
    ```
 
-5. Confirme que o serviço está saudável:
+6. Confirme que o serviço está saudável:
 
    ```bash
-   curl http://localhost:8080/health
-   curl http://localhost:8080/metrics
+   curl http://localhost:5229/health
+   curl http://localhost:5229/metrics
    ```
 
    > O serviço expõe três endpoints de health check, pensados para uso
@@ -113,7 +134,8 @@ evento e regras de negócio).
 ## Testando o fluxo fim a fim (sem depender da API estar no ar)
 
 1. Abra a interface de management do RabbitMQ em
-   [http://localhost:15672](http://localhost:15672) (usuário/senha: `guest`/`guest`).
+   [http://localhost:15672](http://localhost:15672) (usuário `fiapdonate` e
+   senha de `FiapDonateServices/secrets/rabbitmq_password.txt`).
 2. Vá em **Queues** → `doacao-recebida-queue` → **Publish message**.
 3. Publique uma mensagem com o header `content_type: application/vnd.masstransit+json`
    e o seguinte corpo (ajuste `idCampanha` para o `Id` de uma campanha ativa
@@ -131,14 +153,9 @@ evento e regras de negócio).
    }
    ```
 
-4. Confirme no SQL Server que o valor foi creditado:
-
-   ```bash
-   docker compose exec sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong!Passw0rd' -C -d conexao_solidaria -Q "SELECT * FROM dbo.Campanhas; SELECT * FROM dbo.Doacoes;"
-   ```
-
-   O `ValorArrecadado` da campanha deve ter subido em 50.00, e deve existir
-   uma linha em `Doacoes` com `Status = Creditada`.
+4. Confirme no SQL Server compartilhado que o valor foi creditado (o
+   `ValorArrecadado` da campanha deve ter subido em 50.00, e deve existir
+   uma linha em `Doacoes` com `Status = Creditada`).
 
 ## Rodando os testes automatizados
 
@@ -148,11 +165,15 @@ dotnet test FiapDonateWorker.slnx
 
 ## Deploy local em Kubernetes
 
+Os manifests deste repositório apontam para os Services `rabbitmq` e
+`sqlserver` do `FiapDonateServices` (namespace `fiapdonate`). Suba a infra
+compartilhada primeiro; depois:
+
 ```bash
 docker build -t fiapdonateworker:local .
-cp k8s/secret.example.yaml k8s/secret.yaml   # ajuste credenciais se necessário
+cp k8s/secret.example.yaml k8s/secret.yaml   # cole as senhas de FiapDonateServices/secrets
 kubectl apply -f k8s/configmap.yaml -f k8s/secret.yaml -f k8s/deployment.yaml -f k8s/service.yaml
-kubectl get pods
+kubectl get pods -n fiapdonate
 ```
 
 ## Estrutura do projeto
@@ -165,7 +186,7 @@ src/
 tests/
   FiapDonateWorker.Domain.Tests/
   FiapDonateWorker.Infrastructure.Tests/
-k8s/                                  manifests Kubernetes (Deployment, Service, ConfigMap, Secret)
+k8s/                                  manifests Kubernetes do Worker (apontam para a infra compartilhada)
 docs/superpowers/specs/               documento de design
 docs/superpowers/plans/               este plano de implementação
 ```

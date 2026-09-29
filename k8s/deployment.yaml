@@ -1,16 +1,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fiapdonateworker
+  name: fiapdonate-worker
+  namespace: fiapdonate
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: fiapdonateworker
+      app: fiapdonate-worker
   template:
     metadata:
       labels:
-        app: fiapdonateworker
+        app: fiapdonate-worker
     spec:
       containers:
         - name: worker
@@ -20,9 +21,9 @@ spec:
             - containerPort: 8080
           envFrom:
             - configMapRef:
-                name: fiapdonateworker-config
+                name: fiapdonate-worker-config
             - secretRef:
-                name: fiapdonateworker-secret
+                name: fiapdonate-worker-secrets
           livenessProbe:
             httpGet:
               path: /health/live
@@ -33,5 +34,5 @@ spec:
             httpGet:
               path: /health/ready
               port: 8080
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 10
